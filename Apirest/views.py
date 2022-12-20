@@ -1,10 +1,15 @@
 #from django.shortcuts import render
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from  .serializers import TaskSerializer
-from .models import Task
-from rest_framework import generics, status
 from django.shortcuts import get_object_or_404
+from rest_framework import generics, status, pagination
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.response import Response
+import json
+from rest_framework.viewsets import ModelViewSet
+from collections import OrderedDict
+from .models import Task
+from .serializers import TaskSerializer
+from Apirest.pagination import CustomPagination
+from rest_framework.permissions import IsAuthenticated
 
 # Create your views here.
 
@@ -28,18 +33,34 @@ def ApirestOverview(request):
 class TaskList(generics.ListAPIView):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
-    
+    pagination_class = CustomPagination
+    permission_classes = [IsAuthenticated]
     filter_fields = (
         'date',
         'status',
         'important',
-        'is_deleted'
+        'is_deleted',
+        'user'
     )
+    
+    def get_queryset(self, *args, **kwargs):
+        qs = super().get_queryset(*args, **kwargs)
+        user = self.request.user
+        return qs.filter(user=user)
+
+class CustomPagination(pagination.PageNumberPagination):
+    page_size = 4
+    page_size_query_param = 'page_size'
+    max_page_size = 50
+    page_query_param = 'p'
+
+
 
 """ 
 La fonction ci-dessous va afficher une vue détaillée d'une tâche particulière à l'aide de pk. 
 """ 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def taskDetail(request, pk):
     tasks = get_object_or_404(Task, pk=pk, is_deleted=False)
     serializer = TaskSerializer(tasks, many = False)
@@ -49,6 +70,7 @@ def taskDetail(request, pk):
 La fonction ci-dessous va permettre  de modifier une tâche particulière à l'aide de pk. 
 """ 
 @api_view(['PUT'])
+@permission_classes([IsAuthenticated])
 def taskUpdate(request, pk):
     task = get_object_or_404(Task, pk=pk, is_deleted=False)
     serializer = TaskSerializer(instance=task, data=request.data)
@@ -61,10 +83,11 @@ def taskUpdate(request, pk):
 La fonction ci-dessous va permettre  de créer/ajouter une tâche. 
 """ 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def taskCreate(request):
     serializer = TaskSerializer(data=request.data)
     if serializer.is_valid():
-        serializer.save()
+        serializer.save(user=request.user)
         return Response(serializer.data)
     return Response(data=serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -73,27 +96,45 @@ def taskCreate(request):
 La fonction ci-dessous va permettre  de supprimer une tâche particulière à l'aide de pk. 
 """
 @api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
 def taskTemporarilyDelete(request, pk):
     task = get_object_or_404(Task, pk=pk)
+    id = task.id
     task.is_deleted=True
     task.save()
-    return Response("Taks has been deleted temporarily successfully.")
+    result = {
+        "data": id,
+        "message": "Taks deleted successfull"
+    }
+    return Response(result)
 
 """ 
 La fonction ci-dessous va permettre  de supprimer une tâche particulière à l'aide de pk. 
 """
 @api_view(['PUT'])
+@permission_classes([IsAuthenticated])
 def taskRestore(request, pk):
     task = get_object_or_404(Task, pk=pk)
-    task.is_deleted=False
+    id = task.id
+    task.is_deleted = False
     task.save()
-    return Response("Taks has been restore  successfully.")
+    result = {
+        "data": id,
+        "message": "Tasks restore successfull"
+    }
+    return Response(result)
 
 """ 
 La fonction ci-dessous va permettre  de supprimer une tâche particulière à l'aide de pk. 
 """
 @api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
 def taskDelete(request, pk):
     task = get_object_or_404(Task, pk=pk)
+    id = task.id
     task.delete()
-    return Response("Taks deleted successfully.")
+    result = {
+        "data": id,
+        "message": "Taks deleted successfull"
+    }
+    return Response(result)
